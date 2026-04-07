@@ -167,7 +167,8 @@ const Admin = () => {
       .order("created_at", { ascending: false });
 
     if (error) {
-      toast.error("Failed to fetch products");
+      console.error("Failed to fetch products:", error);
+      toast.error(error.message || "Failed to fetch products");
     } else {
       setProducts(data || []);
     }
