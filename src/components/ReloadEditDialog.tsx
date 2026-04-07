@@ -13,27 +13,40 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
+import { compressImage, uploadToStorage } from "@/lib/image-utils";
 
 export const ReloadEditDialog = () => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [settingsId, setSettingsId] = useState<string | null>(null);
-  const [loadingImagePreview, setLoadingImagePreview] = useState<string | null>(null);
   
-  // Page title and favicon
+  const [loadingImagePreview, setLoadingImagePreview] = useState<string | null>(null);
+  const [loadingImageFile, setLoadingImageFile] = useState<File | null>(null);
+  
   const [pageTitle, setPageTitle] = useState("");
   const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+  const [faviconFile, setFaviconFile] = useState<File | null>(null);
   
-  // Dialog popup icon uploads
   const [dialogFacebookIconPreview, setDialogFacebookIconPreview] = useState<string | null>(null);
-  const [dialogTiktokIconPreview, setDialogTiktokIconPreview] = useState<string | null>(null);
-  const [dialogTelegramIconPreview, setDialogTelegramIconPreview] = useState<string | null>(null);
+  const [dialogFacebookIconFile, setDialogFacebookIconFile] = useState<File | null>(null);
   
-  // Footer icon uploads
+  const [dialogTiktokIconPreview, setDialogTiktokIconPreview] = useState<string | null>(null);
+  const [dialogTiktokIconFile, setDialogTiktokIconFile] = useState<File | null>(null);
+  
+  const [dialogTelegramIconPreview, setDialogTelegramIconPreview] = useState<string | null>(null);
+  const [dialogTelegramIconFile, setDialogTelegramIconFile] = useState<File | null>(null);
+  
   const [footerFacebookIconPreview, setFooterFacebookIconPreview] = useState<string | null>(null);
+  const [footerFacebookIconFile, setFooterFacebookIconFile] = useState<File | null>(null);
+  
   const [footerTiktokIconPreview, setFooterTiktokIconPreview] = useState<string | null>(null);
+  const [footerTiktokIconFile, setFooterTiktokIconFile] = useState<File | null>(null);
+  
   const [footerTelegramIconPreview, setFooterTelegramIconPreview] = useState<string | null>(null);
+  const [footerTelegramIconFile, setFooterTelegramIconFile] = useState<File | null>(null);
+  
   const [footerPaymentIconPreview, setFooterPaymentIconPreview] = useState<string | null>(null);
+  const [footerPaymentIconFile, setFooterPaymentIconFile] = useState<File | null>(null);
 
   useEffect(() => {
     if (open) {
@@ -66,10 +79,12 @@ export const ReloadEditDialog = () => {
 
   const handleImageUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
-    setter: (value: string | null) => void
+    setter: (value: string | null) => void,
+    fileSetter: (file: File | null) => void
   ) => {
     const file = e.target.files?.[0];
     if (file) {
+      fileSetter(file);
       const reader = new FileReader();
       reader.onload = (event) => {
         setter(event.target?.result as string);
@@ -81,39 +96,47 @@ export const ReloadEditDialog = () => {
   const handleSave = async () => {
     setLoading(true);
     try {
+      const processImage = async (file: File | null, existingUrl: string | null, name: string) => {
+        if (!file) return existingUrl;
+        const compressed = await compressImage(file);
+        const fileName = `${name}-${Date.now()}.jpg`;
+        return await uploadToStorage(supabase, "product-images", `site-assets/${fileName}`, compressed);
+      };
+
+      const loadingImageUrl = await processImage(loadingImageFile, loadingImagePreview, "loading");
+      const faviconUrl = await processImage(faviconFile, faviconPreview, "favicon");
+      const dialogFacebookIconUrl = await processImage(dialogFacebookIconFile, dialogFacebookIconPreview, "dialog-fb");
+      const dialogTiktokIconUrl = await processImage(dialogTiktokIconFile, dialogTiktokIconPreview, "dialog-tiktok");
+      const dialogTelegramIconUrl = await processImage(dialogTelegramIconFile, dialogTelegramIconPreview, "dialog-telegram");
+      const footerFacebookIconUrl = await processImage(footerFacebookIconFile, footerFacebookIconPreview, "footer-fb");
+      const footerTiktokIconUrl = await processImage(footerTiktokIconFile, footerTiktokIconPreview, "footer-tiktok");
+      const footerTelegramIconUrl = await processImage(footerTelegramIconFile, footerTelegramIconPreview, "footer-telegram");
+      const footerPaymentIconUrl = await processImage(footerPaymentIconFile, footerPaymentIconPreview, "footer-payment");
+
+      const updateData = {
+        loading_image_url: loadingImageUrl,
+        page_title: pageTitle || null,
+        favicon_url: faviconUrl,
+        dialog_facebook_icon_url: dialogFacebookIconUrl,
+        dialog_tiktok_icon_url: dialogTiktokIconUrl,
+        dialog_telegram_icon_url: dialogTelegramIconUrl,
+        footer_facebook_icon_url: footerFacebookIconUrl,
+        footer_tiktok_icon_url: footerTiktokIconUrl,
+        footer_telegram_icon_url: footerTelegramIconUrl,
+        footer_payment_icon_url: footerPaymentIconUrl,
+      };
+
       if (settingsId) {
         const { error } = await supabase
           .from("site_settings")
-          .update({
-            loading_image_url: loadingImagePreview,
-            page_title: pageTitle || null,
-            favicon_url: faviconPreview,
-            dialog_facebook_icon_url: dialogFacebookIconPreview,
-            dialog_tiktok_icon_url: dialogTiktokIconPreview,
-            dialog_telegram_icon_url: dialogTelegramIconPreview,
-            footer_facebook_icon_url: footerFacebookIconPreview,
-            footer_tiktok_icon_url: footerTiktokIconPreview,
-            footer_telegram_icon_url: footerTelegramIconPreview,
-            footer_payment_icon_url: footerPaymentIconPreview,
-          })
+          .update(updateData)
           .eq("id", settingsId);
 
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from("site_settings")
-          .insert({
-            loading_image_url: loadingImagePreview,
-            page_title: pageTitle || null,
-            favicon_url: faviconPreview,
-            dialog_facebook_icon_url: dialogFacebookIconPreview,
-            dialog_tiktok_icon_url: dialogTiktokIconPreview,
-            dialog_telegram_icon_url: dialogTelegramIconPreview,
-            footer_facebook_icon_url: footerFacebookIconPreview,
-            footer_tiktok_icon_url: footerTiktokIconPreview,
-            footer_telegram_icon_url: footerTelegramIconPreview,
-            footer_payment_icon_url: footerPaymentIconPreview,
-          });
+          .insert(updateData);
 
         if (error) throw error;
       }
@@ -130,11 +153,13 @@ export const ReloadEditDialog = () => {
   const ImageUploadBox = ({ 
     label, 
     preview, 
-    setPreview 
+    setPreview,
+    setFile
   }: { 
     label: string; 
     preview: string | null; 
-    setPreview: (value: string | null) => void 
+    setPreview: (value: string | null) => void;
+    setFile: (file: File | null) => void;
   }) => (
     <div className="space-y-1">
       <Label className="text-foreground text-xs">{label}</Label>
@@ -160,7 +185,7 @@ export const ReloadEditDialog = () => {
           <input
             type="file"
             accept="image/*"
-            onChange={(e) => handleImageUpload(e, setPreview)}
+            onChange={(e) => handleImageUpload(e, setPreview, setFile)}
             className="hidden"
           />
         </label>
@@ -208,6 +233,7 @@ export const ReloadEditDialog = () => {
                     label="Favicon (Tab Icon)" 
                     preview={faviconPreview} 
                     setPreview={setFaviconPreview} 
+                    setFile={setFaviconFile}
                   />
                 </div>
               </div>
@@ -222,6 +248,7 @@ export const ReloadEditDialog = () => {
                   label="Loading Image" 
                   preview={loadingImagePreview} 
                   setPreview={setLoadingImagePreview} 
+                  setFile={setLoadingImageFile}
                 />
               </div>
 
@@ -236,16 +263,19 @@ export const ReloadEditDialog = () => {
                     label="Facebook" 
                     preview={dialogFacebookIconPreview} 
                     setPreview={setDialogFacebookIconPreview} 
+                    setFile={setDialogFacebookIconFile}
                   />
                   <ImageUploadBox 
                     label="TikTok" 
                     preview={dialogTiktokIconPreview} 
                     setPreview={setDialogTiktokIconPreview} 
+                    setFile={setDialogTiktokIconFile}
                   />
                   <ImageUploadBox 
                     label="Telegram" 
                     preview={dialogTelegramIconPreview} 
                     setPreview={setDialogTelegramIconPreview} 
+                    setFile={setDialogTelegramIconFile}
                   />
                 </div>
               </div>
@@ -261,21 +291,25 @@ export const ReloadEditDialog = () => {
                     label="Facebook" 
                     preview={footerFacebookIconPreview} 
                     setPreview={setFooterFacebookIconPreview} 
+                    setFile={setFooterFacebookIconFile}
                   />
                   <ImageUploadBox 
                     label="TikTok" 
                     preview={footerTiktokIconPreview} 
                     setPreview={setFooterTiktokIconPreview} 
+                    setFile={setFooterTiktokIconFile}
                   />
                   <ImageUploadBox 
                     label="Telegram" 
                     preview={footerTelegramIconPreview} 
                     setPreview={setFooterTelegramIconPreview} 
+                    setFile={setFooterTelegramIconFile}
                   />
                   <ImageUploadBox 
                     label="Payment" 
                     preview={footerPaymentIconPreview} 
                     setPreview={setFooterPaymentIconPreview} 
+                    setFile={setFooterPaymentIconFile}
                   />
                 </div>
               </div>

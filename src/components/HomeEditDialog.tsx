@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
+import { compressImage, uploadToStorage } from "@/lib/image-utils";
 
 // Popular Google Fonts for selection
 const FONT_OPTIONS = [
@@ -103,13 +104,17 @@ export const HomeEditDialog = () => {
   // Form state
   const [siteName, setSiteName] = useState("");
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoWidth, setLogoWidth] = useState(80);
   const [logoHeight, setLogoHeight] = useState(80);
   const [logoPositionTop, setLogoPositionTop] = useState<number | null>(0);
   const [logoPositionBottom, setLogoPositionBottom] = useState<number | null>(null);
   const [logoPositionLeft, setLogoPositionLeft] = useState<number | null>(null);
   const [logoPositionRight, setLogoPositionRight] = useState<number | null>(null);
+  
   const [headerBgPreview, setHeaderBgPreview] = useState<string | null>(null);
+  const [headerBgFile, setHeaderBgFile] = useState<File | null>(null);
+  
   const [footerText, setFooterText] = useState("");
   const [footerBgColor, setFooterBgColor] = useState("#1a1a2e");
   const [footerTextColor, setFooterTextColor] = useState("#d4af37");
@@ -124,15 +129,25 @@ export const HomeEditDialog = () => {
   const [footerFacebookUrl, setFooterFacebookUrl] = useState("");
   const [footerTiktokUrl, setFooterTiktokUrl] = useState("");
   const [footerTelegramUrl, setFooterTelegramUrl] = useState("");
+  
   const [footerFacebookIconPreview, setFooterFacebookIconPreview] = useState<string | null>(null);
+  const [footerFacebookIconFile, setFooterFacebookIconFile] = useState<File | null>(null);
+  
   const [footerTiktokIconPreview, setFooterTiktokIconPreview] = useState<string | null>(null);
+  const [footerTiktokIconFile, setFooterTiktokIconFile] = useState<File | null>(null);
+  
   const [footerTelegramIconPreview, setFooterTelegramIconPreview] = useState<string | null>(null);
+  const [footerTelegramIconFile, setFooterTelegramIconFile] = useState<File | null>(null);
+  
   const [footerPaymentText, setFooterPaymentText] = useState("Accept Payment");
   const [footerPaymentIconPreview, setFooterPaymentIconPreview] = useState<string | null>(null);
+  const [footerPaymentIconFile, setFooterPaymentIconFile] = useState<File | null>(null);
   
   // Product Card Theme
   const [productCardBgColor, setProductCardBgColor] = useState("#1a1a2e");
   const [productCardBgImagePreview, setProductCardBgImagePreview] = useState<string | null>(null);
+  const [productCardBgImageFile, setProductCardBgImageFile] = useState<File | null>(null);
+  
   const [productNameColor, setProductNameColor] = useState("#d4af37");
   const [productPriceColor, setProductPriceColor] = useState("#d4af37");
   const [productDescriptionColor, setProductDescriptionColor] = useState("#9ca3af");
@@ -145,10 +160,13 @@ export const HomeEditDialog = () => {
   // Browser Tab Settings
   const [pageTitle, setPageTitle] = useState("Pinkkaa");
   const [faviconPreview, setFaviconPreview] = useState<string | null>(null);
+  const [faviconFile, setFaviconFile] = useState<File | null>(null);
   
   // Body Background Settings
   const [bodyBgColor, setBodyBgColor] = useState("#0d0d0d");
   const [bodyBgImagePreview, setBodyBgImagePreview] = useState<string | null>(null);
+  const [bodyBgImageFile, setBodyBgImageFile] = useState<File | null>(null);
+  
   const [bodyTextColor, setBodyTextColor] = useState("#ffffff");
   
   // Products Section Title
@@ -156,10 +174,13 @@ export const HomeEditDialog = () => {
   
   // Loading/Reload Image
   const [loadingImagePreview, setLoadingImagePreview] = useState<string | null>(null);
+  const [loadingImageFile, setLoadingImageFile] = useState<File | null>(null);
   
   // Dialog Theme Settings
   const [dialogBgColor, setDialogBgColor] = useState("#1a1a2e");
   const [dialogBgImagePreview, setDialogBgImagePreview] = useState<string | null>(null);
+  const [dialogBgImageFile, setDialogBgImageFile] = useState<File | null>(null);
+  
   const [dialogBorderColor, setDialogBorderColor] = useState("#d4af37");
   const [dialogTitleColor, setDialogTitleColor] = useState("#d4af37");
   const [dialogPriceColor, setDialogPriceColor] = useState("#d4af37");
@@ -170,9 +191,15 @@ export const HomeEditDialog = () => {
   const [dialogTiktokIconColor, setDialogTiktokIconColor] = useState("#000000");
   const [dialogTelegramIconColor, setDialogTelegramIconColor] = useState("#0088CC");
   const [dialogCloseIconColor, setDialogCloseIconColor] = useState("#ffffff");
+  
   const [dialogFacebookIconPreview, setDialogFacebookIconPreview] = useState<string | null>(null);
+  const [dialogFacebookIconFile, setDialogFacebookIconFile] = useState<File | null>(null);
+  
   const [dialogTiktokIconPreview, setDialogTiktokIconPreview] = useState<string | null>(null);
+  const [dialogTiktokIconFile, setDialogTiktokIconFile] = useState<File | null>(null);
+  
   const [dialogTelegramIconPreview, setDialogTelegramIconPreview] = useState<string | null>(null);
+  const [dialogTelegramIconFile, setDialogTelegramIconFile] = useState<File | null>(null);
   
   useEffect(() => {
     if (open) {
@@ -261,10 +288,12 @@ export const HomeEditDialog = () => {
 
   const handleImageUpload = (
     e: React.ChangeEvent<HTMLInputElement>,
-    setter: (value: string | null) => void
+    setter: (value: string | null) => void,
+    fileSetter: (file: File | null) => void
   ) => {
     const file = e.target.files?.[0];
     if (file) {
+      fileSetter(file);
       const reader = new FileReader();
       reader.onload = (event) => {
         setter(event.target?.result as string);
@@ -276,139 +305,105 @@ export const HomeEditDialog = () => {
   const handleSave = async () => {
     setLoading(true);
     try {
+      // Helper to process and upload images
+      const processImage = async (file: File | null, existingUrl: string | null, name: string) => {
+        if (!file) return existingUrl;
+        const compressed = await compressImage(file);
+        const fileName = `${name}-${Date.now()}.jpg`;
+        return await uploadToStorage(supabase, "product-images", `site-assets/${fileName}`, compressed);
+      };
+
+      const logoUrl = await processImage(logoFile, logoPreview, "logo");
+      const headerBgUrl = await processImage(headerBgFile, headerBgPreview, "header-bg");
+      const faviconUrl = await processImage(faviconFile, faviconPreview, "favicon");
+      const bodyBgImageUrl = await processImage(bodyBgImageFile, bodyBgImagePreview, "body-bg");
+      const loadingImageUrl = await processImage(loadingImageFile, loadingImagePreview, "loading");
+      const productCardBgImageUrl = await processImage(productCardBgImageFile, productCardBgImagePreview, "card-bg");
+      const dialogBgImageUrl = await processImage(dialogBgImageFile, dialogBgImagePreview, "dialog-bg");
+      
+      const footerFacebookIconUrl = await processImage(footerFacebookIconFile, footerFacebookIconPreview, "footer-fb");
+      const footerTiktokIconUrl = await processImage(footerTiktokIconFile, footerTiktokIconPreview, "footer-tiktok");
+      const footerTelegramUrl = await processImage(footerTelegramIconFile, footerTelegramIconPreview, "footer-telegram");
+      const footerPaymentIconUrl = await processImage(footerPaymentIconFile, footerPaymentIconPreview, "footer-payment");
+      
+      const dialogFacebookIconUrl = await processImage(dialogFacebookIconFile, dialogFacebookIconPreview, "dialog-fb");
+      const dialogTiktokIconUrl = await processImage(dialogTiktokIconFile, dialogTiktokIconPreview, "dialog-tiktok");
+      const dialogTelegramIconUrl = await processImage(dialogTelegramIconFile, dialogTelegramIconPreview, "dialog-telegram");
+
+      const updateData = {
+        site_name: siteName,
+        logo_url: logoUrl,
+        logo_width: logoWidth,
+        logo_height: logoHeight,
+        logo_position_top: logoPositionTop,
+        logo_position_bottom: logoPositionBottom,
+        logo_position_left: logoPositionLeft,
+        logo_position_right: logoPositionRight,
+        header_bg_url: headerBgUrl,
+        footer_text: footerText,
+        footer_bg_color: footerBgColor,
+        footer_text_color: footerTextColor,
+        site_name_color: siteNameColor,
+        site_name_font: siteNameFont,
+        site_name_font_size: siteNameFontSize,
+        category_text_color: categoryTextColor,
+        category_font: categoryFont,
+        category_bg_color: categoryBgColor,
+        category_active_bg_color: categoryActiveBgColor,
+        footer_description: footerDescription,
+        footer_facebook_url: footerFacebookUrl || null,
+        footer_tiktok_url: footerTiktokUrl || null,
+        footer_telegram_url: footerTelegramUrl || null,
+        footer_facebook_icon_url: footerFacebookIconUrl,
+        footer_tiktok_icon_url: footerTiktokIconUrl,
+        footer_telegram_icon_url: footerTelegramIconUrl,
+        footer_payment_text: footerPaymentText,
+        footer_payment_icon_url: footerPaymentIconUrl,
+        product_card_bg_color: productCardBgColor,
+        product_card_bg_image_url: productCardBgImageUrl,
+        product_name_color: productNameColor,
+        product_price_color: productPriceColor,
+        product_description_color: productDescriptionColor,
+        product_button_bg_color: productButtonBgColor,
+        product_button_text_color: productButtonTextColor,
+        product_card_border_color: productCardBorderColor,
+        product_card_shine_color: productCardShineColor,
+        product_card_shine_speed: productCardShineSpeed,
+        page_title: pageTitle,
+        favicon_url: faviconUrl,
+        body_bg_color: bodyBgColor,
+        body_bg_image_url: bodyBgImageUrl,
+        body_text_color: bodyTextColor,
+        products_title_color: productsTitleColor,
+        loading_image_url: loadingImageUrl,
+        dialog_bg_color: dialogBgColor,
+        dialog_bg_image_url: dialogBgImageUrl,
+        dialog_border_color: dialogBorderColor,
+        dialog_title_color: dialogTitleColor,
+        dialog_price_color: dialogPriceColor,
+        dialog_description_color: dialogDescriptionColor,
+        dialog_button_bg_color: dialogButtonBgColor,
+        dialog_button_text_color: dialogButtonTextColor,
+        dialog_facebook_icon_color: dialogFacebookIconColor,
+        dialog_tiktok_icon_color: dialogTiktokIconColor,
+        dialog_telegram_icon_color: dialogTelegramIconColor,
+        dialog_close_icon_color: dialogCloseIconColor,
+        dialog_facebook_icon_url: dialogFacebookIconUrl,
+        dialog_tiktok_icon_url: dialogTiktokIconUrl,
+        dialog_telegram_icon_url: dialogTelegramIconUrl,
+      };
+
       if (settings?.id) {
         const { error } = await supabase
           .from("site_settings")
-          .update({
-            site_name: siteName,
-            logo_url: logoPreview,
-            logo_width: logoWidth,
-            logo_height: logoHeight,
-            logo_position_top: logoPositionTop,
-            logo_position_bottom: logoPositionBottom,
-            logo_position_left: logoPositionLeft,
-            logo_position_right: logoPositionRight,
-            header_bg_url: headerBgPreview,
-            footer_text: footerText,
-            footer_bg_color: footerBgColor,
-            footer_text_color: footerTextColor,
-            site_name_color: siteNameColor,
-            site_name_font: siteNameFont,
-            site_name_font_size: siteNameFontSize,
-            category_text_color: categoryTextColor,
-            category_font: categoryFont,
-            category_bg_color: categoryBgColor,
-            category_active_bg_color: categoryActiveBgColor,
-            footer_description: footerDescription,
-            footer_facebook_url: footerFacebookUrl || null,
-            footer_tiktok_url: footerTiktokUrl || null,
-            footer_telegram_url: footerTelegramUrl || null,
-            footer_facebook_icon_url: footerFacebookIconPreview,
-            footer_tiktok_icon_url: footerTiktokIconPreview,
-            footer_telegram_icon_url: footerTelegramIconPreview,
-            footer_payment_text: footerPaymentText,
-            footer_payment_icon_url: footerPaymentIconPreview,
-            product_card_bg_color: productCardBgColor,
-            product_card_bg_image_url: productCardBgImagePreview,
-            product_name_color: productNameColor,
-            product_price_color: productPriceColor,
-            product_description_color: productDescriptionColor,
-            product_button_bg_color: productButtonBgColor,
-            product_button_text_color: productButtonTextColor,
-            product_card_border_color: productCardBorderColor,
-            product_card_shine_color: productCardShineColor,
-            product_card_shine_speed: productCardShineSpeed,
-            page_title: pageTitle,
-            favicon_url: faviconPreview,
-            body_bg_color: bodyBgColor,
-            body_bg_image_url: bodyBgImagePreview,
-            body_text_color: bodyTextColor,
-            products_title_color: productsTitleColor,
-            loading_image_url: loadingImagePreview,
-            dialog_bg_color: dialogBgColor,
-            dialog_bg_image_url: dialogBgImagePreview,
-            dialog_border_color: dialogBorderColor,
-            dialog_title_color: dialogTitleColor,
-            dialog_price_color: dialogPriceColor,
-            dialog_description_color: dialogDescriptionColor,
-            dialog_button_bg_color: dialogButtonBgColor,
-            dialog_button_text_color: dialogButtonTextColor,
-            dialog_facebook_icon_color: dialogFacebookIconColor,
-            dialog_tiktok_icon_color: dialogTiktokIconColor,
-            dialog_telegram_icon_color: dialogTelegramIconColor,
-            dialog_close_icon_color: dialogCloseIconColor,
-            dialog_facebook_icon_url: dialogFacebookIconPreview,
-            dialog_tiktok_icon_url: dialogTiktokIconPreview,
-            dialog_telegram_icon_url: dialogTelegramIconPreview,
-          })
+          .update(updateData)
           .eq("id", settings.id);
 
         if (error) throw error;
       } else {
         const { error } = await supabase
           .from("site_settings")
-          .insert({
-            site_name: siteName,
-            logo_url: logoPreview,
-            logo_width: logoWidth,
-            logo_height: logoHeight,
-            logo_position_top: logoPositionTop,
-            logo_position_bottom: logoPositionBottom,
-            logo_position_left: logoPositionLeft,
-            logo_position_right: logoPositionRight,
-            header_bg_url: headerBgPreview,
-            footer_text: footerText,
-            footer_bg_color: footerBgColor,
-            footer_text_color: footerTextColor,
-            site_name_color: siteNameColor,
-            site_name_font: siteNameFont,
-            site_name_font_size: siteNameFontSize,
-            category_text_color: categoryTextColor,
-            category_font: categoryFont,
-            category_bg_color: categoryBgColor,
-            category_active_bg_color: categoryActiveBgColor,
-            footer_description: footerDescription,
-            footer_facebook_url: footerFacebookUrl || null,
-            footer_tiktok_url: footerTiktokUrl || null,
-            footer_telegram_url: footerTelegramUrl || null,
-            footer_facebook_icon_url: footerFacebookIconPreview,
-            footer_tiktok_icon_url: footerTiktokIconPreview,
-            footer_telegram_icon_url: footerTelegramIconPreview,
-            footer_payment_text: footerPaymentText,
-            footer_payment_icon_url: footerPaymentIconPreview,
-            product_card_bg_color: productCardBgColor,
-            product_card_bg_image_url: productCardBgImagePreview,
-            product_name_color: productNameColor,
-            product_price_color: productPriceColor,
-            product_description_color: productDescriptionColor,
-            product_button_bg_color: productButtonBgColor,
-            product_button_text_color: productButtonTextColor,
-            product_card_border_color: productCardBorderColor,
-            product_card_shine_color: productCardShineColor,
-            product_card_shine_speed: productCardShineSpeed,
-            page_title: pageTitle,
-            favicon_url: faviconPreview,
-            body_bg_color: bodyBgColor,
-            body_bg_image_url: bodyBgImagePreview,
-            body_text_color: bodyTextColor,
-            products_title_color: productsTitleColor,
-            loading_image_url: loadingImagePreview,
-            dialog_bg_color: dialogBgColor,
-            dialog_bg_image_url: dialogBgImagePreview,
-            dialog_border_color: dialogBorderColor,
-            dialog_title_color: dialogTitleColor,
-            dialog_price_color: dialogPriceColor,
-            dialog_description_color: dialogDescriptionColor,
-            dialog_button_bg_color: dialogButtonBgColor,
-            dialog_button_text_color: dialogButtonTextColor,
-            dialog_facebook_icon_color: dialogFacebookIconColor,
-            dialog_tiktok_icon_color: dialogTiktokIconColor,
-            dialog_telegram_icon_color: dialogTelegramIconColor,
-            dialog_close_icon_color: dialogCloseIconColor,
-            dialog_facebook_icon_url: dialogFacebookIconPreview,
-            dialog_tiktok_icon_url: dialogTiktokIconPreview,
-            dialog_telegram_icon_url: dialogTelegramIconPreview,
-          });
+          .insert(updateData);
 
         if (error) throw error;
       }
@@ -479,7 +474,7 @@ export const HomeEditDialog = () => {
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => handleImageUpload(e, setFaviconPreview)}
+                      onChange={(e) => handleImageUpload(e, setFaviconPreview, setFaviconFile)}
                       className="hidden"
                     />
                   </label>
@@ -514,7 +509,7 @@ export const HomeEditDialog = () => {
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => handleImageUpload(e, setLoadingImagePreview)}
+                      onChange={(e) => handleImageUpload(e, setLoadingImagePreview, setLoadingImageFile)}
                       className="hidden"
                     />
                   </label>
@@ -569,7 +564,7 @@ export const HomeEditDialog = () => {
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => handleImageUpload(e, setBodyBgImagePreview)}
+                      onChange={(e) => handleImageUpload(e, setBodyBgImagePreview, setBodyBgImageFile)}
                       className="hidden"
                     />
                   </label>
@@ -679,7 +674,7 @@ export const HomeEditDialog = () => {
                     <input
                       type="file"
                       accept="image/*,.gif"
-                      onChange={(e) => handleImageUpload(e, setLogoPreview)}
+                      onChange={(e) => handleImageUpload(e, setLogoPreview, setLogoFile)}
                       className="hidden"
                     />
                   </label>
@@ -808,7 +803,7 @@ export const HomeEditDialog = () => {
                   <input
                     type="file"
                     accept="image/*"
-                    onChange={(e) => handleImageUpload(e, setHeaderBgPreview)}
+                    onChange={(e) => handleImageUpload(e, setHeaderBgPreview, setHeaderBgFile)}
                     className="hidden"
                   />
                 </label>
@@ -1044,7 +1039,7 @@ export const HomeEditDialog = () => {
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => handleImageUpload(e, setProductCardBgImagePreview)}
+                      onChange={(e) => handleImageUpload(e, setProductCardBgImagePreview, setProductCardBgImageFile)}
                       className="hidden"
                     />
                   </label>
@@ -1264,7 +1259,7 @@ export const HomeEditDialog = () => {
                   <label className="flex flex-col items-center justify-center w-full h-16 border-2 border-dashed border-gold/30 rounded-lg cursor-pointer hover:border-gold/60 transition-colors bg-input/50">
                     <ImagePlus className="w-5 h-5 text-gold/50" />
                     <span className="text-xs text-muted-foreground mt-1">Upload Image</span>
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setDialogBgImagePreview)} />
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setDialogBgImagePreview, setDialogBgImageFile)} />
                   </label>
                 )}
               </div>
@@ -1319,7 +1314,7 @@ export const HomeEditDialog = () => {
                     ) : (
                       <label className="flex flex-col items-center justify-center w-full h-12 border border-dashed border-gold/30 rounded cursor-pointer hover:border-gold/60 bg-input/50">
                         <ImagePlus className="w-4 h-4 text-gold/50" />
-                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setDialogFacebookIconPreview)} />
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setDialogFacebookIconPreview, setDialogFacebookIconFile)} />
                       </label>
                     )}
                     <input type="color" value={dialogFacebookIconColor} onChange={(e) => setDialogFacebookIconColor(e.target.value)} className="w-full h-6 rounded border border-gold/30 cursor-pointer" title="Background color (if no image)" />
@@ -1335,7 +1330,7 @@ export const HomeEditDialog = () => {
                     ) : (
                       <label className="flex flex-col items-center justify-center w-full h-12 border border-dashed border-gold/30 rounded cursor-pointer hover:border-gold/60 bg-input/50">
                         <ImagePlus className="w-4 h-4 text-gold/50" />
-                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setDialogTiktokIconPreview)} />
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setDialogTiktokIconPreview, setDialogTiktokIconFile)} />
                       </label>
                     )}
                     <input type="color" value={dialogTiktokIconColor} onChange={(e) => setDialogTiktokIconColor(e.target.value)} className="w-full h-6 rounded border border-gold/30 cursor-pointer" title="Background color (if no image)" />
@@ -1351,7 +1346,7 @@ export const HomeEditDialog = () => {
                     ) : (
                       <label className="flex flex-col items-center justify-center w-full h-12 border border-dashed border-gold/30 rounded cursor-pointer hover:border-gold/60 bg-input/50">
                         <ImagePlus className="w-4 h-4 text-gold/50" />
-                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setDialogTelegramIconPreview)} />
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleImageUpload(e, setDialogTelegramIconPreview, setDialogTelegramIconFile)} />
                       </label>
                     )}
                     <input type="color" value={dialogTelegramIconColor} onChange={(e) => setDialogTelegramIconColor(e.target.value)} className="w-full h-6 rounded border border-gold/30 cursor-pointer" title="Background color (if no image)" />
@@ -1415,7 +1410,7 @@ export const HomeEditDialog = () => {
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleImageUpload(e, setFooterFacebookIconPreview)}
+                        onChange={(e) => handleImageUpload(e, setFooterFacebookIconPreview, setFooterFacebookIconFile)}
                         className="hidden"
                       />
                     </label>
@@ -1450,7 +1445,7 @@ export const HomeEditDialog = () => {
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleImageUpload(e, setFooterTiktokIconPreview)}
+                        onChange={(e) => handleImageUpload(e, setFooterTiktokIconPreview, setFooterTiktokIconFile)}
                         className="hidden"
                       />
                     </label>
@@ -1485,7 +1480,7 @@ export const HomeEditDialog = () => {
                       <input
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleImageUpload(e, setFooterTelegramIconPreview)}
+                        onChange={(e) => handleImageUpload(e, setFooterTelegramIconPreview, setFooterTelegramIconFile)}
                         className="hidden"
                       />
                     </label>
@@ -1531,7 +1526,7 @@ export const HomeEditDialog = () => {
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={(e) => handleImageUpload(e, setFooterPaymentIconPreview)}
+                      onChange={(e) => handleImageUpload(e, setFooterPaymentIconPreview, setFooterPaymentIconFile)}
                       className="hidden"
                     />
                   </label>

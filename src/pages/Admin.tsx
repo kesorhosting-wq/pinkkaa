@@ -27,8 +27,10 @@ import { PaymentGatewayConfigDialog } from "@/components/PaymentGatewayConfig";
 import { OrderStatsDashboard } from "@/components/OrderStatsDashboard";
 import { DatabaseExportImport } from "@/components/DatabaseExportImport";
 import { CouponManager } from "@/components/CouponManager";
+import { ImageOptimizer } from "@/components/ImageOptimizer";
 import khmerMandala from "@/assets/khmer-mandala.jpg";
 import type { CategoryFunction } from "@/types/shop";
+import { compressImage, uploadToStorage } from "@/lib/image-utils";
 
 interface Product {
   id: string;
@@ -61,6 +63,26 @@ const Admin = () => {
   const [open, setOpen] = useState(false);
   const [loadingImageUrl, setLoadingImageUrl] = useState<string | null>(null);
 
+  // Form state
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [currency, setCurrency] = useState("$");
+  const [description, setDescription] = useState("");
+  const [preview, setPreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [categoryIds, setCategoryIds] = useState<string[]>([]);
+  const [facebookUrl, setFacebookUrl] = useState("");
+  const [tiktokUrl, setTiktokUrl] = useState("");
+  const [telegramUrl, setTelegramUrl] = useState("");
+  const [orderUrl, setOrderUrl] = useState("");
+  const [imageFit, setImageFit] = useState("cover");
+  const [imageCustomWidth, setImageCustomWidth] = useState<number | null>(null);
+  const [imageCustomHeight, setImageCustomHeight] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   // Fetch loading image on mount
   useEffect(() => {
     const fetchLoadingImage = async () => {
@@ -75,25 +97,6 @@ const Admin = () => {
     };
     fetchLoadingImage();
   }, []);
-  
-  // Form state
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
-  const [currency, setCurrency] = useState("$");
-  const [description, setDescription] = useState("");
-  const [preview, setPreview] = useState<string | null>(null);
-  const [categoryIds, setCategoryIds] = useState<string[]>([]);
-  const [facebookUrl, setFacebookUrl] = useState("");
-  const [tiktokUrl, setTiktokUrl] = useState("");
-  const [telegramUrl, setTelegramUrl] = useState("");
-  const [orderUrl, setOrderUrl] = useState("");
-  const [imageFit, setImageFit] = useState("cover");
-  const [imageCustomWidth, setImageCustomWidth] = useState<number | null>(null);
-  const [imageCustomHeight, setImageCustomHeight] = useState<number | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  
-  // Edit state
-  const [editingId, setEditingId] = useState<string | null>(null);
   
   // Get unique previously used URLs for suggestions
   const usedFacebookUrls = [...new Set(products.map(p => p.facebook_url).filter(Boolean))];
@@ -174,6 +177,7 @@ const Admin = () => {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setImageFile(file);
       const reader = new FileReader();
       reader.onload = (event) => {
         setPreview(event.target?.result as string);
@@ -183,7 +187,7 @@ const Admin = () => {
   };
 
   const handleSubmit = async () => {
-    if (!name || !preview) {
+    if (!name || (!preview && !imageFile)) {
       toast.error("Name and image are required");
       return;
     }
@@ -191,6 +195,18 @@ const Admin = () => {
     setSubmitting(true);
 
     try {
+      let imageUrl = preview;
+
+      // If there's a new file, upload it
+      if (imageFile) {
+        const compressedBlob = await compressImage(imageFile);
+        const fileExt = "jpg";
+        const fileName = `${Date.now()}.${fileExt}`;
+        const filePath = `products/${fileName}`;
+        
+        imageUrl = await uploadToStorage(supabase, "product-images", filePath, compressedBlob);
+      }
+      
       const fullPrice = price ? `${price}${currency}` : null;
       
       if (editingId) {
@@ -198,7 +214,7 @@ const Admin = () => {
           .from("products")
           .update({
             name,
-            image_url: preview,
+            image_url: imageUrl,
             price: fullPrice,
             description: description || null,
             category_id: categoryIds.length > 0 ? categoryIds[0] : null,
@@ -228,7 +244,7 @@ const Admin = () => {
           .from("products")
           .insert({
             name,
-            image_url: preview,
+            image_url: imageUrl,
             price: fullPrice,
             description: description || null,
             category_id: categoryIds.length > 0 ? categoryIds[0] : null,
@@ -444,6 +460,11 @@ const Admin = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
+        {/* Speed Optimizer Section */}
+        <div className="mb-8 max-w-md">
+          <ImageOptimizer />
+        </div>
+
         {/* Action Buttons */}
         <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
           <h2 className="text-xl font-display text-foreground">Manage Products</h2>

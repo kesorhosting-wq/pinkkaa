@@ -168,8 +168,11 @@ const Index = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [festivalTheme, setFestivalTheme] = useState<FestivalTheme>('none');
   const [colorMode, setColorMode] = useState<ColorMode>('light');
+  const [hasMore, setHasMore] = useState(true);
+  const PAGE_SIZE = 12;
 
   // Apply page title and favicon on mount
   useEffect(() => {
@@ -196,9 +199,18 @@ const Index = () => {
   }, []);
 
   useEffect(() => {
-    // Fetch all data in parallel for faster loading
-    Promise.all([fetchProducts(), fetchSiteSettings(), fetchCategories()]);
-  }, []);
+    // Initial data fetch
+    const initFetch = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchProducts(true),
+        fetchSiteSettings(),
+        fetchCategories()
+      ]);
+      setLoading(false);
+    };
+    initFetch();
+  }, [selectedCategory]);
 
   const fetchSiteSettings = async () => {
     const { data, error } = await supabase
@@ -284,27 +296,44 @@ const Index = () => {
     }
   };
 
-  const fetchProducts = async () => {
-    // Fetch products (select only needed columns to avoid huge base64 payloads) and categories in parallel
-    const [productsResult, productCatsResult] = await Promise.all([
-      supabase.from("products").select("id, name, image_url, price, description, category_id, facebook_url, tiktok_url, telegram_url, order_url, image_fit, image_custom_width, image_custom_height").order("created_at", { ascending: false }),
-      supabase.from("product_categories").select("product_id, category_id"),
-    ]);
+  const fetchProducts = async (isInitial = false) => {
+    if (!isInitial && !hasMore) return;
+    
+    if (!isInitial) setLoadingMore(true);
+    
+    const from = isInitial ? 0 : products.length;
+    const to = from + PAGE_SIZE - 1;
 
-    const productsData = productsResult.data;
-    const productsError = productsResult.error;
-    const productCatsData = productCatsResult.data;
+    let query = supabase
+      .from("products")
+      .select("id, name, image_url, price, description, category_id, facebook_url, tiktok_url, telegram_url, order_url, image_fit, image_custom_width, image_custom_height")
+      .order("created_at", { ascending: false })
+      .range(from, to);
+
+    // If a category is selected, we filter by category_id or via the junction table
+    if (selectedCategory) {
+      query = query.eq('category_id', selectedCategory);
+    }
+
+    const { data: productsData, error: productsError } = await query;
 
     if (productsError) {
       console.error("Error fetching products:", productsError);
+      setHasMore(false);
     } else {
+      const productIds = (productsData || []).map(p => p.id);
+      
+      // Fetch category mappings for these products
+      const { data: productCatsData } = await supabase
+        .from("product_categories")
+        .select("product_id, category_id")
+        .in("product_id", productIds);
+
       const mappedProducts = (productsData || []).map((p) => {
-        // Get all category IDs for this product from junction table
         const productCategoryIds = (productCatsData || [])
           .filter(pc => pc.product_id === p.id)
           .map(pc => pc.category_id);
         
-        // If no entries in junction table, fall back to legacy category_id
         const categoryIds = productCategoryIds.length > 0 
           ? productCategoryIds 
           : (p.category_id ? [p.category_id] : []);
@@ -326,9 +355,17 @@ const Index = () => {
           image_custom_height: p.image_custom_height,
         };
       });
-      setProducts(mappedProducts);
+
+      if (isInitial) {
+        setProducts(mappedProducts);
+      } else {
+        setProducts(prev => [...prev, ...mappedProducts]);
+      }
+      
+      setHasMore(mappedProducts.length === PAGE_SIZE);
     }
-    setLoading(false);
+    
+    setLoadingMore(false);
   };
 
   const handleSettingsChange = (newSettings: Partial<SiteSettings>) => {
@@ -336,7 +373,7 @@ const Index = () => {
     toast.success("Settings updated successfully!");
   };
 
-  // Filter products by selected category (now checks if product has that category)
+  // Filter products by selected category (already filtered by query if selectedCategory is set)
   const filteredProducts = selectedCategory 
     ? products.filter(p => p.categoryIds.includes(selectedCategory))
     : products;
@@ -352,7 +389,6 @@ const Index = () => {
 
   return (
     <>
-      
       <div 
         className={`min-h-screen ${getThemeClass()} ${colorMode === 'light' ? 'light-mode' : ''}`}
         style={{
@@ -482,6 +518,19 @@ const Index = () => {
                 telegramIconUrl: settings.dialogTelegramIconUrl,
               }}
             />
+
+            {/* Load More Button */}
+            {hasMore && !loading && (
+              <div className="flex justify-center mt-8">
+                <button
+                  onClick={() => fetchProducts(false)}
+                  disabled={loadingMore}
+                  className="px-8 py-3 rounded-full bg-gold text-primary-foreground font-display hover:bg-gold-dark transition-all disabled:opacity-50"
+                >
+                  {loadingMore ? "Loading..." : "Load More / មើលបន្ថែម"}
+                </button>
+              </div>
+            )}
         </div>
 
       </main>
