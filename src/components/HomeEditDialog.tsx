@@ -13,7 +13,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
-import { compressImage, uploadToStorage } from "@/lib/image-utils";
+import { compressImage, getFileExtension, uploadToStorage } from "@/lib/image-utils";
 
 // Popular Google Fonts for selection
 const FONT_OPTIONS = [
@@ -309,7 +309,8 @@ export const HomeEditDialog = () => {
       const processImage = async (file: File | null, existingUrl: string | null, name: string) => {
         if (!file) return existingUrl;
         const compressed = await compressImage(file);
-        const fileName = `${name}-${Date.now()}.jpg`;
+        const extension = getFileExtension(file);
+        const fileName = `${name}-${Date.now()}.${extension}`;
         return await uploadToStorage(supabase, "product-images", `site-assets/${fileName}`, compressed);
       };
 

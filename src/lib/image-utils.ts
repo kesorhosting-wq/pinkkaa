@@ -1,6 +1,30 @@
 
 /**
+ * Returns true for animated GIFs or other non-compressible image types.
+ */
+const isNonCompressibleImage = (file: File | Blob): boolean => {
+  return file.type === "image/gif";
+};
+
+export const getFileExtension = (file: File | Blob): string => {
+  if (file instanceof File && file.name) {
+    const parts = file.name.split(".");
+    if (parts.length > 1) {
+      return parts.pop()!.toLowerCase();
+    }
+  }
+  const mimeParts = file.type.split("/");
+  const extension = mimeParts[1] ? mimeParts[1].split("+")[0] : "jpg";
+  return extension.toLowerCase();
+};
+
+export const getContentType = (file: File | Blob): string => {
+  return file.type || "application/octet-stream";
+};
+
+/**
  * Compresses an image file using the Canvas API.
+ * GIFs are preserved without conversion so animation is not lost.
  * @param file The original image file
  * @param maxWidth The maximum width of the compressed image
  * @param maxHeight The maximum height of the compressed image
@@ -8,12 +32,17 @@
  * @returns A promise that resolves to the compressed Blob
  */
 export const compressImage = (
-  file: File,
+  file: File | Blob,
   maxWidth: number = 800,
   maxHeight: number = 800,
   quality: number = 0.7
 ): Promise<Blob> => {
   return new Promise((resolve, reject) => {
+    if (isNonCompressibleImage(file)) {
+      resolve(file);
+      return;
+    }
+
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = (event) => {
@@ -49,7 +78,7 @@ export const compressImage = (
               reject(new Error("Canvas toBlob failed"));
             }
           },
-          "image/jpeg",
+          getContentType(file) === "image/png" ? "image/png" : "image/jpeg",
           quality
         );
       };
@@ -58,6 +87,7 @@ export const compressImage = (
     reader.onerror = (error) => reject(error);
   });
 };
+
 /**
  * Converts a base64 string to a Blob object.
  */
@@ -94,7 +124,7 @@ export const uploadToStorage = async (
     .from(bucket)
     .upload(path, file, {
       upsert: true,
-      contentType: file instanceof File ? file.type : 'image/jpeg'
+      contentType: getContentType(file)
     });
 
   if (uploadError) throw uploadError;

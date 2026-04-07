@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { base64ToBlob, uploadToStorage } from "@/lib/image-utils";
+import { base64ToBlob, getFileExtension, uploadToStorage } from "@/lib/image-utils";
 import { toast } from "sonner";
 import { Zap, Loader2, CheckCircle2 } from "lucide-react";
 
@@ -44,7 +44,8 @@ export const ImageOptimizer = () => {
       for (const product of base64Products) {
         try {
           const blob = base64ToBlob(product.image_url);
-          const fileName = `prod-${product.id}-${Date.now()}.jpg`;
+          const extension = getFileExtension(blob);
+          const fileName = `prod-${product.id}-${Date.now()}.${extension}`;
           const publicUrl = await uploadToStorage(supabase, "product-images", `products/${fileName}`, blob);
           
           await supabase.from("products").update({ image_url: publicUrl }).eq("id", product.id);
@@ -62,7 +63,8 @@ export const ImageOptimizer = () => {
         for (const setting of base64Settings) {
           try {
             const blob = base64ToBlob(setting.val);
-            const fileName = `site-${setting.key}-${Date.now()}.jpg`;
+            const extension = getFileExtension(blob);
+            const fileName = `site-${setting.key}-${Date.now()}.${extension}`;
             const publicUrl = await uploadToStorage(supabase, "product-images", `site-assets/${fileName}`, blob);
             
             updateObj[setting.key] = publicUrl;

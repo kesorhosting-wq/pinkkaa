@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { supabase } from "@/integrations/supabase/client";
-import { compressImage, uploadToStorage } from "@/lib/image-utils";
+import { compressImage, getFileExtension, uploadToStorage } from "@/lib/image-utils";
 
 export const ReloadEditDialog = () => {
   const [open, setOpen] = useState(false);
@@ -99,7 +99,8 @@ export const ReloadEditDialog = () => {
       const processImage = async (file: File | null, existingUrl: string | null, name: string) => {
         if (!file) return existingUrl;
         const compressed = await compressImage(file);
-        const fileName = `${name}-${Date.now()}.jpg`;
+        const extension = getFileExtension(file);
+        const fileName = `${name}-${Date.now()}.${extension}`;
         return await uploadToStorage(supabase, "product-images", `site-assets/${fileName}`, compressed);
       };
 
